@@ -1,0 +1,873 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Scanner">
+<meta name="theme-color" content="#0d1117">
+<title>Stock Scanner</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --card-2: #eef0f3;
+    --text: #12161c;
+    --muted: #677180;
+    --line: #dde1e6;
+    --accent: #2563eb;
+    --up: #0f9d58;
+    --down: #d93025;
+    --up-soft: rgba(15, 157, 88, .12);
+    --down-soft: rgba(217, 48, 37, .12);
+    --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1117;
+      --card: #161b22;
+      --card-2: #1f2630;
+      --text: #e8ecf1;
+      --muted: #8b95a3;
+      --line: #2a313b;
+      --accent: #5b8cff;
+      --up: #2ecc71;
+      --down: #ff5c5c;
+      --up-soft: rgba(46, 204, 113, .14);
+      --down-soft: rgba(255, 92, 92, .14);
+      --shadow: none;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1117; --card: #161b22; --card-2: #1f2630; --text: #e8ecf1; --muted: #8b95a3;
+    --line: #2a313b; --accent: #5b8cff; --up: #2ecc71; --down: #ff5c5c;
+    --up-soft: rgba(46, 204, 113, .14); --down-soft: rgba(255, 92, 92, .14); --shadow: none;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+  button, input, select { font: inherit; color: inherit; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  header {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; align-items: center; gap: 10px;
+    padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 18px; margin: 0; flex: 1; letter-spacing: -.01em; }
+  .status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.live { background: var(--up); box-shadow: 0 0 0 3px var(--up-soft); }
+  .dot.demo { background: #f5a623; }
+  .dot.err { background: var(--down); }
+  .icon-btn {
+    width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--card); display: grid; place-items: center; cursor: pointer;
+  }
+
+  main { max-width: 640px; margin: 0 auto; padding: 12px 16px; }
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .card { background: var(--card); border-radius: 16px; padding: 14px; box-shadow: var(--shadow); border: 1px solid var(--line); margin-bottom: 12px; }
+
+  .search { display: flex; gap: 8px; margin-bottom: 12px; }
+  .search input {
+    flex: 1; min-width: 0; height: 44px; padding: 0 14px; border-radius: 12px;
+    border: 1px solid var(--line); background: var(--card); text-transform: uppercase; font-size: 16px;
+  }
+  .btn {
+    height: 44px; padding: 0 16px; border-radius: 12px; border: 0; cursor: pointer;
+    background: var(--accent); color: #fff; font-weight: 600;
+  }
+  .btn.secondary { background: var(--card-2); color: var(--text); }
+  .btn:disabled { opacity: .55; }
+
+  .quote-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .sym { font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
+  .price { font-size: 30px; font-weight: 700; text-align: right; letter-spacing: -.02em; transition: color .6s; }
+  .price.flash-up { color: var(--up); }
+  .price.flash-down { color: var(--down); }
+  .chg { font-size: 14px; font-weight: 600; text-align: right; }
+  .up { color: var(--up); }
+  .down { color: var(--down); }
+  .sub { font-size: 12px; color: var(--muted); }
+
+  .chart-wrap { position: relative; margin: 10px -4px 4px; }
+  canvas#chart { width: 100%; height: 260px; display: block; touch-action: pan-y; }
+  .chart-note {
+    position: absolute; inset: 0; display: none; place-items: center; text-align: center;
+    color: var(--muted); font-size: 13px; padding: 0 30px; pointer-events: none;
+  }
+  .chart-note.show { display: grid; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+  .stat { background: var(--card-2); border-radius: 10px; padding: 8px; }
+  .stat b { display: block; font-size: 14px; }
+  .stat span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+
+  .refresh-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .bar { flex: 1; height: 3px; background: var(--card-2); border-radius: 2px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); }
+
+  .section-title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 4px 2px 8px; }
+  .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin: 0 -16px 10px; padding-left: 16px; padding-right: 16px; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: none; height: 34px; padding: 0 14px; border-radius: 17px; border: 1px solid var(--line);
+    background: var(--card); cursor: pointer; font-size: 14px; white-space: nowrap;
+  }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .filters { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .field input, .field select {
+    width: 100%; height: 40px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--card-2); padding: 0 10px; font-size: 16px;
+  }
+  .field.full { grid-column: 1 / -1; }
+  #custom-wrap { display: none; }
+  #custom-wrap.show { display: block; }
+
+  .scan-btn { width: 100%; margin-top: 12px; height: 48px; font-size: 16px; }
+  .progress { height: 3px; background: var(--card-2); border-radius: 2px; overflow: hidden; margin-top: 10px; opacity: 0; transition: opacity .2s; }
+  .progress.show { opacity: 1; }
+  .progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+
+  .results-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin: 14px 2px 6px; }
+  .rows { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); }
+  .row {
+    display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--line);
+    cursor: pointer; width: 100%; background: none; border-left: 0; border-right: 0; border-top: 0; text-align: left;
+  }
+  .row:last-child { border-bottom: 0; }
+  .row:active { background: var(--card-2); }
+  .row .l { flex: 1; min-width: 0; }
+  .row .l b { display: block; font-size: 16px; }
+  .row .r { text-align: right; }
+  .row .r b { display: block; font-size: 15px; }
+  .pill { display: inline-block; min-width: 70px; text-align: center; padding: 3px 8px; border-radius: 8px; font-size: 13px; font-weight: 600; margin-top: 2px; }
+  .pill.up { background: var(--up-soft); }
+  .pill.down { background: var(--down-soft); }
+  .empty { padding: 28px 16px; text-align: center; color: var(--muted); font-size: 14px; }
+
+  nav.tabs {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+    display: flex; background: var(--card); border-top: 1px solid var(--line);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  nav.tabs button {
+    flex: 1; height: 60px; border: 0; background: none; cursor: pointer; color: var(--muted);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px; font-weight: 600;
+  }
+  nav.tabs button.on { color: var(--accent); }
+  nav.tabs svg { width: 24px; height: 24px; }
+
+  .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9; display: none; }
+  .sheet-bg.show { display: block; }
+  .sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; max-width: 640px; margin: 0 auto;
+    background: var(--card); border-radius: 18px 18px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+    transform: translateY(105%); transition: transform .25s ease;
+  }
+  .sheet.show { transform: none; }
+  .sheet h2 { margin: 0 0 6px; font-size: 18px; }
+  .sheet p { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
+  .sheet a { color: var(--accent); }
+  .sheet .btns { display: flex; gap: 8px; margin-top: 12px; }
+  .sheet .btns .btn { flex: 1; }
+  .err-msg { color: var(--down); font-size: 13px; margin-top: 8px; min-height: 1em; }
+  .banner {
+    font-size: 13px; background: var(--card-2); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px;
+    display: flex; gap: 10px; align-items: center;
+  }
+  .banner span { flex: 1; }
+  .banner button { background: none; border: 0; color: var(--accent); font-weight: 600; cursor: pointer; padding: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Stock Scanner</h1>
+  <div class="status"><i class="dot" id="status-dot"></i><span id="status-text">Starting…</span></div>
+  <button class="icon-btn" id="open-settings" aria-label="Settings">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  </button>
+</header>
+
+<main>
+  <div class="banner" id="demo-banner" hidden>
+    <span>Showing <b>demo data</b>. Add a free Finnhub key to get real prices.</span>
+    <button id="banner-setup">Set up</button>
+  </div>
+
+  <!-- CHART -->
+  <section class="view active" id="view-chart">
+    <form class="search" id="search-form">
+      <input id="search-input" placeholder="Symbol, e.g. AAPL" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <button class="btn" type="submit">Go</button>
+    </form>
+
+    <div class="card">
+      <div class="quote-head">
+        <div>
+          <div class="sym" id="q-sym">—</div>
+          <div class="sub" id="q-time">&nbsp;</div>
+        </div>
+        <div>
+          <div class="price num" id="q-price">—</div>
+          <div class="chg num" id="q-chg">&nbsp;</div>
+        </div>
+      </div>
+
+      <div class="chart-wrap">
+        <canvas id="chart"></canvas>
+        <div class="chart-note" id="chart-note"></div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><span>Open</span><b class="num" id="s-o">—</b></div>
+        <div class="stat"><span>High</span><b class="num" id="s-h">—</b></div>
+        <div class="stat"><span>Low</span><b class="num" id="s-l">—</b></div>
+        <div class="stat"><span>Prev</span><b class="num" id="s-pc">—</b></div>
+      </div>
+
+      <div class="refresh-row">
+        <span id="refresh-label">Auto-refresh every 10s</span>
+        <div class="bar"><i id="refresh-bar"></i></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCANNER -->
+  <section class="view" id="view-scan">
+    <div class="section-title">Scan for</div>
+    <div class="chips" id="preset-chips"></div>
+
+    <div class="card">
+      <div class="filters">
+        <div class="field full">
+          <label for="f-universe">Stock list</label>
+          <select id="f-universe"></select>
+        </div>
+        <div class="field full" id="custom-wrap">
+          <label for="f-custom">Your symbols (comma separated)</label>
+          <input id="f-custom" placeholder="AAPL, TSLA, NVDA" autocapitalize="characters" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="f-minp">Min price ($)</label>
+          <input id="f-minp" type="number" inputmode="decimal" placeholder="0">
+        </div>
+        <div class="field">
+          <label for="f-maxp">Max price ($)</label>
+          <input id="f-maxp" type="number" inputmode="decimal" placeholder="Any">
+        </div>
+        <div class="field full">
+          <label for="f-minmove">Min move today (±%)</label>
+          <input id="f-minmove" type="number" inputmode="decimal" placeholder="0">
+        </div>
+      </div>
+      <button class="btn scan-btn" id="scan-btn">Scan</button>
+      <div class="progress" id="scan-progress"><i></i></div>
+    </div>
+
+    <div class="results-meta"><span id="results-count">Tap Scan to find stocks</span><span id="results-time"></span></div>
+    <div class="rows" id="results"><div class="empty">No scan yet.</div></div>
+  </section>
+</main>
+
+<nav class="tabs">
+  <button class="on" data-view="chart">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 6-6"/></svg>
+    Chart
+  </button>
+  <button data-view="scan">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+    Scanner
+  </button>
+</nav>
+
+<div class="sheet-bg" id="sheet-bg"></div>
+<div class="sheet" id="sheet">
+  <h2>Live data</h2>
+  <p>Prices come from <a href="https://finnhub.io/register" target="_blank" rel="noopener">Finnhub</a>, a public stock data service. Sign up free, copy your API key, and paste it here. It's saved only on this phone.</p>
+  <div class="field">
+    <label for="key-input">Finnhub API key</label>
+    <input id="key-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your key">
+  </div>
+  <div class="err-msg" id="key-err"></div>
+  <div class="btns">
+    <button class="btn secondary" id="use-demo">Use demo data</button>
+    <button class="btn" id="save-key">Save</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const REFRESH_MS = 10000;
+  const $ = s => document.querySelector(s);
+
+  // ---------- storage (may be unavailable in private mode) ----------
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  };
+
+  // ---------- stock lists ----------
+  const UNIVERSES = {
+    mega:    { label: 'Mega caps', syms: 'AAPL MSFT NVDA AMZN GOOGL META TSLA AVGO JPM LLY V UNH XOM MA COST HD PG JNJ WMT NFLX ORCL CRM AMD ABBV BAC KO PEP MRK ADBE CVX' },
+    tech:    { label: 'Tech & AI', syms: 'NVDA AMD AVGO TSM MU INTC QCOM ARM SMCI PLTR SNOW CRWD PANW NET DDOG MDB SHOP UBER NOW INTU AMAT LRCX ASML MRVL ANET DELL IBM TXN ADI ON' },
+    popular: { label: 'Popular & high volume', syms: 'TSLA PLTR SOFI AMC GME RIVN LCID NIO F AAL CCL MARA RIOT COIN HOOD SNAP PINS DKNG RBLX AFRM UPST CVNA BABA PYPL T NU GRAB SIRI CHWY OPEN' },
+    etf:     { label: 'ETFs', syms: 'SPY QQQ IWM DIA XLK XLF XLE XLV XLY XLI XLP XLU XLB XLRE SMH SOXX ARKK GLD SLV USO TLT HYG EEM EFA TQQQ SQQQ KRE XBI IBB VNQ' },
+    custom:  { label: 'My own list…', syms: '' },
+  };
+  Object.values(UNIVERSES).forEach(u => u.list = u.syms.split(' ').filter(Boolean));
+
+  const gap = q => q.pc ? (q.o - q.pc) / q.pc * 100 : 0;
+  const range = q => q.pc ? (q.h - q.l) / q.pc * 100 : 0;
+  const fromHigh = q => q.h ? (q.c - q.h) / q.h * 100 : 0;
+  const fromLow = q => q.l ? (q.c - q.l) / q.l * 100 : 0;
+
+  const PRESETS = {
+    gainers:  { label: 'Top gainers',  test: q => q.dp > 0,              sort: (a, b) => b.dp - a.dp, note: q => `Up ${fmt(q.d)} today` },
+    losers:   { label: 'Top losers',   test: q => q.dp < 0,              sort: (a, b) => a.dp - b.dp, note: q => `Down ${fmt(Math.abs(q.d))} today` },
+    gapup:    { label: 'Gap up',       test: q => gap(q) >= 1,           sort: (a, b) => gap(b) - gap(a), note: q => `Gapped ${pct(gap(q))} at open` },
+    gapdown:  { label: 'Gap down',     test: q => gap(q) <= -1,          sort: (a, b) => gap(a) - gap(b), note: q => `Gapped ${pct(gap(q))} at open` },
+    nearhigh: { label: 'Near day high', test: q => fromHigh(q) >= -0.75, sort: (a, b) => b.dp - a.dp, note: q => `${pct(fromHigh(q))} from high` },
+    nearlow:  { label: 'Near day low', test: q => fromLow(q) <= 0.75,    sort: (a, b) => a.dp - b.dp, note: q => `${pct(fromLow(q))} from low` },
+    volatile: { label: 'Big range',    test: q => range(q) >= 3,         sort: (a, b) => range(b) - range(a), note: q => `Day range ${range(q).toFixed(1)}%` },
+    all:      { label: 'Everything',   test: () => true,                 sort: (a, b) => b.dp - a.dp, note: q => `Range ${fmt(q.l)} – ${fmt(q.h)}` },
+  };
+
+  // ---------- formatting ----------
+  const fmt = n => n == null || isNaN(n) ? '—' : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: n < 1 ? 4 : 2 });
+  const pct = n => (n > 0 ? '+' : '') + (n || 0).toFixed(2) + '%';
+  const signed = n => (n > 0 ? '+' : n < 0 ? '−' : '') + fmt(Math.abs(n));
+  const timeStr = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+  // ---------- state ----------
+  const state = {
+    key: store.get('fh_key', ''),
+    symbol: store.get('symbol', 'AAPL'),
+    preset: store.get('preset', 'gainers'),
+    quotes: {},          // latest quote per symbol
+    ticks: {},           // price history per symbol [{t, p}]
+    results: [],
+    scanId: 0,
+    rotate: 0,
+    lastOk: 0,
+    error: '',
+  };
+  const isDemo = () => !state.key;
+
+  // ---------- live data: Finnhub with a rate limiter (free plan: 60 calls / min) ----------
+  const live = {
+    stamps: [], queue: [], active: 0, pausedUntil: 0, timer: 0,
+    quote(sym, priority) {
+      return new Promise((resolve, reject) => {
+        const job = { sym, priority, resolve, reject };
+        priority ? this.queue.unshift(job) : this.queue.push(job);
+        this.pump();
+      });
+    },
+    dropBackground() {
+      this.queue = this.queue.filter(j => {
+        if (j.priority) return true;
+        j.reject(Object.assign(new Error('cancelled'), { cancelled: true }));
+        return false;
+      });
+    },
+    pump() {
+      while (this.active < 4 && this.queue.length) {
+        const now = Date.now();
+        this.stamps = this.stamps.filter(t => now - t < 60000);
+        const full = this.stamps.length >= 55;
+        if (now < this.pausedUntil || full) {
+          const wait = Math.max(this.pausedUntil - now, full ? 60000 - (now - this.stamps[0]) + 50 : 0);
+          clearTimeout(this.timer);
+          this.timer = setTimeout(() => this.pump(), wait);
+          return;
+        }
+        const job = this.queue.shift();
+        this.stamps.push(now);
+        this.active++;
+        this.fetch(job.sym).then(job.resolve, err => {
+          if (err.status === 429) { this.pausedUntil = Date.now() + 5000; this.queue.unshift(job); }
+          else job.reject(err);
+        }).finally(() => { this.active--; this.pump(); });
+      }
+    },
+    async fetch(sym) {
+      const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${encodeURIComponent(state.key)}`;
+      let r;
+      try { r = await fetch(url); } catch { throw Object.assign(new Error('Network error'), { status: 0 }); }
+      if (!r.ok) {
+        const msg = r.status === 401 ? 'Invalid API key' : r.status === 429 ? 'Rate limited' : 'Error ' + r.status;
+        throw Object.assign(new Error(msg), { status: r.status });
+      }
+      const q = await r.json();
+      if (!q || !q.c) throw Object.assign(new Error(`No data for ${sym}`), { status: 404 });
+      return { sym, c: q.c, d: q.d, dp: q.dp, h: q.h, l: q.l, o: q.o, pc: q.pc, t: q.t * 1000 };
+    },
+  };
+
+  // ---------- demo data: realistic random walk so the app works without a key ----------
+  const demo = {
+    s: {},
+    rand(seed) { let x = seed; return () => (x = (x * 16807) % 2147483647) / 2147483647; },
+    init(sym) {
+      let h = 0; for (const ch of sym) h = (h * 31 + ch.charCodeAt(0)) % 2147483647;
+      const r = this.rand(h || 7);
+      const pc = +(8 + r() * 500).toFixed(2);
+      const vol = 0.0012 + r() * 0.0025;
+      const o = pc * (1 + (r() - 0.5) * 0.04);
+      let c = o, hi = o, lo = o;
+      const now = Date.now(), pts = [];
+      for (let i = 240; i >= 0; i--) {
+        c *= 1 + (Math.random() - 0.5) * 2 * vol;
+        hi = Math.max(hi, c); lo = Math.min(lo, c);
+        pts.push({ t: now - i * 60000, p: c });
+      }
+      this.s[sym] = { pc, o, c, hi, lo, vol, last: now };
+      state.ticks[sym] = pts;
+    },
+    quote(sym) {
+      if (!this.s[sym]) this.init(sym);
+      const s = this.s[sym], now = Date.now();
+      if (now - s.last > 5000) {
+        s.c *= 1 + (Math.random() - 0.5) * 2 * s.vol * 1.5;
+        s.hi = Math.max(s.hi, s.c); s.lo = Math.min(s.lo, s.c); s.last = now;
+      }
+      const q = { sym, c: s.c, d: s.c - s.pc, dp: (s.c - s.pc) / s.pc * 100, h: s.hi, l: s.lo, o: s.o, pc: s.pc, t: now };
+      return new Promise(res => setTimeout(() => res(q), 40 + Math.random() * 120));
+    },
+  };
+
+  const getQuote = (sym, priority) => isDemo() ? demo.quote(sym) : live.quote(sym, priority);
+
+  // ---------- price history for the chart ----------
+  function loadTicks(sym) {
+    if (isDemo() || state.ticks[sym]) return;
+    const saved = store.get('ticks:' + sym, []);
+    const cutoff = Date.now() - 18 * 3600e3;
+    state.ticks[sym] = saved.filter(x => x.t > cutoff);
+  }
+  function addTick(sym, q) {
+    const arr = state.ticks[sym] || (state.ticks[sym] = []);
+    const last = arr[arr.length - 1];
+    const now = Date.now();
+    if (last && now - last.t < 4000) { last.p = q.c; }
+    else arr.push({ t: now, p: q.c });
+    if (arr.length > 3000) arr.splice(0, arr.length - 3000);
+    if (!isDemo() && sym === state.symbol) store.set('ticks:' + sym, arr);
+  }
+
+  // ---------- status ----------
+  function setStatus() {
+    const dot = $('#status-dot'), txt = $('#status-text');
+    dot.className = 'dot';
+    if (state.error) { dot.classList.add('err'); txt.textContent = state.error; }
+    else if (isDemo()) { dot.classList.add('demo'); txt.textContent = 'Demo'; }
+    else if (state.lastOk) { dot.classList.add('live'); txt.textContent = 'Live'; }
+    else txt.textContent = 'Connecting…';
+    $('#demo-banner').hidden = !isDemo();
+  }
+
+  // ---------- chart ----------
+  const canvas = $('#chart');
+  let scrubX = null;
+
+  function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+  function drawChart() {
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.clientWidth, H = canvas.clientHeight;
+    if (canvas.width !== W * dpr || canvas.height !== H * dpr) { canvas.width = W * dpr; canvas.height = H * dpr; }
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    const q = state.quotes[state.symbol];
+    const pts = state.ticks[state.symbol] || [];
+    const note = $('#chart-note');
+    if (!q) { note.textContent = 'Loading…'; note.classList.add('show'); return; }
+
+    const up = q.c >= q.pc;
+    const color = cssVar(up ? '--up' : '--down');
+    const muted = cssVar('--muted'), line = cssVar('--line');
+    const padR = 58, padT = 14, padB = 22;
+    const cw = W - padR, ch = H - padT - padB;
+
+    let lo = Math.min(q.l || q.c, q.pc, ...pts.map(p => p.p));
+    let hi = Math.max(q.h || q.c, q.pc, ...pts.map(p => p.p));
+    if (hi - lo < hi * 0.002) { hi += hi * 0.002; lo -= lo * 0.002; }
+    const m = (hi - lo) * 0.08; hi += m; lo -= m;
+    const Y = p => padT + (hi - p) / (hi - lo) * ch;
+
+    // grid + price axis
+    ctx.font = '11px -apple-system, system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i <= 4; i++) {
+      const p = lo + (hi - lo) * i / 4, y = Y(p);
+      ctx.strokeStyle = line; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cw, y); ctx.stroke();
+      ctx.fillStyle = muted; ctx.fillText(fmt(p), cw + 6, y);
+    }
+
+    // previous close reference
+    const yPc = Y(q.pc);
+    ctx.setLineDash([4, 4]); ctx.strokeStyle = muted;
+    ctx.beginPath(); ctx.moveTo(0, yPc); ctx.lineTo(cw, yPc); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = muted; ctx.textAlign = 'left';
+    ctx.fillText('prev close', 4, yPc - 8);
+
+    if (pts.length < 2) {
+      note.textContent = 'Collecting live prices — the chart fills in with each 10-second update while the app is open.';
+      note.classList.add('show');
+      const y = Y(q.c);
+      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(cw - 6, y, 4, 0, Math.PI * 2); ctx.fill();
+      priceTag(ctx, q.c, y, cw, color);
+      return;
+    }
+    note.classList.remove('show');
+
+    const t0 = pts[0].t, t1 = pts[pts.length - 1].t;
+    const X = t => (t1 === t0 ? cw : (t - t0) / (t1 - t0) * (cw - 8));
+
+    // area
+    const grad = ctx.createLinearGradient(0, padT, 0, padT + ch);
+    grad.addColorStop(0, color + '55'); grad.addColorStop(1, color + '00');
+    ctx.beginPath();
+    pts.forEach((p, i) => i ? ctx.lineTo(X(p.t), Y(p.p)) : ctx.moveTo(X(p.t), Y(p.p)));
+    ctx.lineTo(X(t1), padT + ch); ctx.lineTo(X(t0), padT + ch); ctx.closePath();
+    ctx.fillStyle = grad; ctx.fill();
+
+    // line
+    ctx.beginPath();
+    pts.forEach((p, i) => i ? ctx.lineTo(X(p.t), Y(p.p)) : ctx.moveTo(X(p.t), Y(p.p)));
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
+
+    // last point
+    const ly = Y(pts[pts.length - 1].p);
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(X(t1), ly, 3.5, 0, Math.PI * 2); ctx.fill();
+    priceTag(ctx, pts[pts.length - 1].p, ly, cw, color);
+
+    // time axis
+    ctx.fillStyle = muted; ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left'; ctx.fillText(timeStr(t0), 0, H - 5);
+    ctx.textAlign = 'right'; ctx.fillText(timeStr(t1), cw, H - 5);
+    ctx.textAlign = 'left';
+
+    // touch scrub
+    if (scrubX != null) {
+      const tx = t0 + Math.max(0, Math.min(1, scrubX / (cw - 8))) * (t1 - t0);
+      let best = pts[0];
+      for (const p of pts) if (Math.abs(p.t - tx) < Math.abs(best.t - tx)) best = p;
+      const x = X(best.t), y = Y(best.p);
+      ctx.strokeStyle = muted; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + ch); ctx.stroke();
+      ctx.fillStyle = cssVar('--card'); ctx.strokeStyle = color; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      const label = `${fmt(best.p)} · ${new Date(best.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}`;
+      ctx.font = '600 12px -apple-system, system-ui, sans-serif';
+      const w = ctx.measureText(label).width + 14;
+      const bx = Math.max(0, Math.min(cw - w, x - w / 2));
+      ctx.fillStyle = cssVar('--card-2');
+      roundRect(ctx, bx, 0, w, 20, 6); ctx.fill();
+      ctx.fillStyle = cssVar('--text'); ctx.textBaseline = 'middle'; ctx.fillText(label, bx + 7, 10);
+    }
+  }
+  function priceTag(ctx, p, y, cw, color) {
+    ctx.font = '600 11px -apple-system, system-ui, sans-serif';
+    const label = fmt(p), w = ctx.measureText(label).width + 10;
+    ctx.fillStyle = color; roundRect(ctx, cw + 2, y - 9, w, 18, 4); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillText(label, cw + 7, y);
+  }
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+
+  const scrub = e => {
+    const t = e.touches ? e.touches[0] : e;
+    scrubX = t.clientX - canvas.getBoundingClientRect().left;
+    drawChart();
+  };
+  const endScrub = () => { scrubX = null; drawChart(); };
+  canvas.addEventListener('touchstart', scrub, { passive: true });
+  canvas.addEventListener('touchmove', scrub, { passive: true });
+  canvas.addEventListener('touchend', endScrub);
+  canvas.addEventListener('mousemove', scrub);
+  canvas.addEventListener('mouseleave', endScrub);
+  window.addEventListener('resize', drawChart);
+  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', drawChart);
+
+  // ---------- quote panel ----------
+  function renderQuote(prev) {
+    const q = state.quotes[state.symbol];
+    $('#q-sym').textContent = state.symbol;
+    if (!q) { ['#q-price', '#s-o', '#s-h', '#s-l', '#s-pc'].forEach(s => $(s).textContent = '—'); $('#q-chg').innerHTML = '&nbsp;'; drawChart(); return; }
+    const el = $('#q-price');
+    el.textContent = '$' + fmt(q.c);
+    if (prev && prev.c !== q.c) {
+      el.classList.remove('flash-up', 'flash-down');
+      void el.offsetWidth;
+      el.classList.add(q.c > prev.c ? 'flash-up' : 'flash-down');
+      setTimeout(() => el.classList.remove('flash-up', 'flash-down'), 900);
+    }
+    const chg = $('#q-chg');
+    chg.textContent = `${signed(q.d)} (${pct(q.dp)})`;
+    chg.className = 'chg num ' + (q.d >= 0 ? 'up' : 'down');
+    $('#s-o').textContent = fmt(q.o); $('#s-h').textContent = fmt(q.h);
+    $('#s-l').textContent = fmt(q.l); $('#s-pc').textContent = fmt(q.pc);
+    const stale = Date.now() - q.t > 15 * 60e3;
+    $('#q-time').textContent = isDemo() ? 'Demo data' : stale ? `Market closed · last trade ${new Date(q.t).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : `Last trade ${timeStr(q.t)}`;
+    drawChart();
+  }
+
+  async function refreshSymbol() {
+    const sym = state.symbol;
+    try {
+      const q = await getQuote(sym, true);
+      const prev = state.quotes[sym];
+      state.quotes[sym] = q;
+      addTick(sym, q);
+      state.lastOk = Date.now(); state.error = '';
+      if (sym === state.symbol) renderQuote(prev);
+    } catch (e) {
+      if (e.cancelled) return;
+      state.error = e.status === 404 ? '' : e.message;
+      if (e.status === 404 && sym === state.symbol) $('#q-time').textContent = `Couldn't find "${sym}"`;
+    }
+    setStatus();
+  }
+
+  function setSymbol(sym) {
+    sym = sym.trim().toUpperCase().replace(/[^A-Z0-9.\-]/g, '');
+    if (!sym) return;
+    state.symbol = sym; store.set('symbol', sym);
+    loadTicks(sym);
+    $('#q-time').innerHTML = '&nbsp;';
+    renderQuote();
+    refreshSymbol();
+    resetTimer();
+  }
+
+  $('#search-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const inp = $('#search-input');
+    setSymbol(inp.value); inp.value = ''; inp.blur();
+  });
+
+  // ---------- scanner ----------
+  const chipsEl = $('#preset-chips');
+  Object.entries(PRESETS).forEach(([id, p]) => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (id === state.preset ? ' on' : '');
+    b.textContent = p.label; b.dataset.id = id;
+    b.onclick = () => {
+      state.preset = id; store.set('preset', id);
+      chipsEl.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.id === id));
+      runScan();
+    };
+    chipsEl.appendChild(b);
+  });
+
+  const uniSel = $('#f-universe');
+  Object.entries(UNIVERSES).forEach(([id, u]) => uniSel.add(new Option(u.label, id)));
+  uniSel.value = store.get('universe', 'mega');
+  $('#f-custom').value = store.get('custom', '');
+  const f = store.get('filters', {});
+  $('#f-minp').value = f.minp ?? ''; $('#f-maxp').value = f.maxp ?? ''; $('#f-minmove').value = f.minmove ?? '';
+  const syncCustom = () => $('#custom-wrap').classList.toggle('show', uniSel.value === 'custom');
+  uniSel.onchange = () => { store.set('universe', uniSel.value); syncCustom(); };
+  syncCustom();
+
+  function universe() {
+    if (uniSel.value !== 'custom') return UNIVERSES[uniSel.value].list;
+    const v = $('#f-custom').value;
+    store.set('custom', v);
+    return [...new Set(v.toUpperCase().split(/[\s,]+/).map(s => s.replace(/[^A-Z0-9.\-]/g, '')).filter(Boolean))].slice(0, 50);
+  }
+
+  function filters() {
+    const num = id => { const v = parseFloat($(id).value); return isNaN(v) ? null : v; };
+    const out = { minp: num('#f-minp'), maxp: num('#f-maxp'), minmove: num('#f-minmove') };
+    store.set('filters', out);
+    return out;
+  }
+
+  function passes(q, fl) {
+    if (fl.minp != null && q.c < fl.minp) return false;
+    if (fl.maxp != null && q.c > fl.maxp) return false;
+    if (fl.minmove != null && Math.abs(q.dp) < fl.minmove) return false;
+    return PRESETS[state.preset].test(q);
+  }
+
+  let scanCtx = null;
+
+  function computeResults() {
+    if (!scanCtx) return;
+    const p = PRESETS[state.preset];
+    state.results = scanCtx.syms.map(s => state.quotes[s]).filter(q => q && scanCtx.seen.has(q.sym) && passes(q, scanCtx.fl)).sort(p.sort);
+  }
+
+  function renderResults() {
+    const box = $('#results');
+    const p = PRESETS[state.preset];
+    if (!scanCtx) return;
+    if (!state.results.length) {
+      box.innerHTML = `<div class="empty">${scanCtx.done ? 'No stocks match these settings right now. Try another scan or loosen the filters.' : 'Scanning…'}</div>`;
+    } else {
+      box.innerHTML = '';
+      for (const q of state.results) {
+        const row = document.createElement('button');
+        row.className = 'row';
+        const dir = q.dp >= 0 ? 'up' : 'down';
+        row.innerHTML = `<div class="l"><b></b><span class="sub"></span></div>
+          <div class="r"><b class="num">$${fmt(q.c)}</b><span class="pill num ${dir}">${pct(q.dp)}</span></div>`;
+        row.querySelector('.l b').textContent = q.sym;
+        row.querySelector('.l .sub').textContent = p.note(q);
+        row.onclick = () => { setSymbol(q.sym); showView('chart'); window.scrollTo(0, 0); };
+        box.appendChild(row);
+      }
+    }
+    const errs = scanCtx.errors ? ` · ${scanCtx.errors} unavailable` : '';
+    $('#results-count').textContent = scanCtx.done
+      ? `${state.results.length} of ${scanCtx.syms.length} match${errs}`
+      : `Scanning ${scanCtx.seen.size + scanCtx.errors}/${scanCtx.syms.length}…`;
+    $('#results-time').textContent = scanCtx.done ? 'Updated ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }) : '';
+  }
+
+  async function runScan() {
+    const syms = universe();
+    if (!syms.length) { $('#results-count').textContent = 'Add some symbols to your list first.'; return; }
+    const id = ++state.scanId;
+    if (!isDemo()) live.dropBackground();
+    scanCtx = { id, syms, fl: filters(), seen: new Set(), errors: 0, done: false };
+    state.results = [];
+    const btn = $('#scan-btn'), prog = $('#scan-progress');
+    btn.disabled = true; btn.textContent = 'Scanning…';
+    prog.classList.add('show'); prog.firstElementChild.style.width = '0';
+    renderResults();
+
+    let lastRender = 0;
+    await Promise.all(syms.map(s => getQuote(s, false).then(q => {
+      if (id !== state.scanId) return;
+      const prev = state.quotes[s];
+      state.quotes[s] = q;
+      scanCtx.seen.add(s);
+      if (s === state.symbol) { addTick(s, q); renderQuote(prev); }
+    }, e => {
+      if (id !== state.scanId || e.cancelled) return;
+      scanCtx.errors++;
+      if (e.status === 401) state.error = e.message;
+    }).finally(() => {
+      if (id !== state.scanId) return;
+      prog.firstElementChild.style.width = ((scanCtx.seen.size + scanCtx.errors) / syms.length * 100) + '%';
+      if (Date.now() - lastRender > 400) { lastRender = Date.now(); computeResults(); renderResults(); }
+    })));
+
+    if (id !== state.scanId) return;
+    scanCtx.done = true;
+    if (scanCtx.seen.size) { state.lastOk = Date.now(); if (state.error !== 'Invalid API key') state.error = ''; }
+    computeResults(); renderResults(); setStatus();
+    btn.disabled = false; btn.textContent = 'Scan again';
+    setTimeout(() => prog.classList.remove('show'), 400);
+  }
+  $('#scan-btn').onclick = runScan;
+
+  // keep the visible scan results fresh between scans
+  async function refreshResults() {
+    if (!scanCtx || !scanCtx.done || !state.results.length) return;
+    const n = isDemo() ? state.results.length : Math.min(6, state.results.length);
+    const batch = [];
+    for (let i = 0; i < n; i++) batch.push(state.results[(state.rotate + i) % state.results.length].sym);
+    state.rotate = (state.rotate + n) % Math.max(1, state.results.length);
+    const id = scanCtx.id;
+    await Promise.all(batch.filter(s => s !== state.symbol).map(s => getQuote(s, false).then(q => { state.quotes[s] = q; }, () => {})));
+    if (!scanCtx || id !== scanCtx.id) return;
+    const p = PRESETS[state.preset];
+    state.results.sort(p.sort);
+    renderResults();
+  }
+
+  // ---------- 10 second refresh loop ----------
+  let nextAt = 0;
+  function resetTimer() { nextAt = Date.now() + REFRESH_MS; }
+  function tick() {
+    if (document.hidden) return;
+    const left = nextAt - Date.now();
+    $('#refresh-bar').style.width = (100 - Math.max(0, left) / REFRESH_MS * 100) + '%';
+    $('#refresh-label').textContent = `Next update in ${Math.max(0, Math.ceil(left / 1000))}s`;
+    if (left <= 0) {
+      resetTimer();
+      refreshSymbol();
+      refreshResults();
+    }
+  }
+  setInterval(tick, 250);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) { resetTimer(); refreshSymbol(); }
+  });
+
+  // ---------- tabs ----------
+  function showView(v) {
+    document.querySelectorAll('.view').forEach(el => el.classList.toggle('active', el.id === 'view-' + v));
+    document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+    if (v === 'chart') requestAnimationFrame(drawChart);
+    if (v === 'scan' && !scanCtx) runScan();
+  }
+  document.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => showView(b.dataset.view));
+
+  // ---------- settings sheet ----------
+  const openSheet = () => {
+    $('#key-input').value = state.key; $('#key-err').textContent = '';
+    $('#sheet').classList.add('show'); $('#sheet-bg').classList.add('show');
+  };
+  const closeSheet = () => { $('#sheet').classList.remove('show'); $('#sheet-bg').classList.remove('show'); };
+  $('#open-settings').onclick = openSheet;
+  $('#banner-setup').onclick = openSheet;
+  $('#sheet-bg').onclick = closeSheet;
+
+  function switchSource(key) {
+    state.key = key; store.set('fh_key', key);
+    state.quotes = {}; state.ticks = {}; state.results = []; state.error = ''; state.lastOk = 0;
+    demo.s = {}; scanCtx = null; state.scanId++;
+    live.queue = [];
+    $('#results').innerHTML = '<div class="empty">No scan yet.</div>';
+    $('#results-count').textContent = 'Tap Scan to find stocks'; $('#results-time').textContent = '';
+    $('#scan-btn').textContent = 'Scan'; $('#scan-btn').disabled = false;
+    setStatus(); setSymbol(state.symbol);
+  }
+
+  $('#save-key').onclick = async () => {
+    const key = $('#key-input').value.trim();
+    if (!key) { $('#key-err').textContent = 'Paste your key first, or choose demo data.'; return; }
+    const btn = $('#save-key'); btn.disabled = true; btn.textContent = 'Checking…';
+    const old = state.key; state.key = key;
+    try { await live.fetch('AAPL'); switchSource(key); closeSheet(); }
+    catch (e) { state.key = old; $('#key-err').textContent = e.status === 401 || e.status === 403 ? 'That key was rejected. Double-check it.' : `Couldn't connect (${e.message}).`; }
+    btn.disabled = false; btn.textContent = 'Save';
+  };
+  $('#use-demo').onclick = () => { switchSource(''); closeSheet(); };
+
+  // ---------- start ----------
+  setStatus();
+  setSymbol(state.symbol);
+})();
+</script>
+</body>
+</html>
